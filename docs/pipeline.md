@@ -13,3 +13,17 @@
    - Live transcripts (user + bot)
    - Product cards returned by tools
    - Order status details
+
+## Agent internals (planned)
+
+Inside the LiveKit voice agent:
+
+1. Join a LiveKit room as an "agent" participant.
+2. For each user session:
+   - Receive audio frames.
+   - Send audio to STT for transcription.
+   - Pass text + conversation history into an LLM.
+   - Allow the LLM to call tools (search products, get order status, etc.).
+   - Use TTS to synthesize the reply.
+3. Stream synthesized audio back to the user.
+4. Persist logs (transcripts, tool calls, errors) for analysis.
