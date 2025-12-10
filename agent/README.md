@@ -17,3 +17,13 @@ Planned pipeline:
 Day 2 status:
 - Configuration via `AgentSettings` (LiveKit + OpenAI).
 - Async `run_agent` loop placeholder prepared in `agent_main.py`.
+
+## Current status (Day 3)
+
+- Defined abstract interfaces for:
+  - `SpeechToText`
+  - `LLMClient`
+  - `TextToSpeech`
+- Implemented dummy / mock versions for early testing.
+- Added `VoicePipeline` that runs a full STT -> LLM -> TTS turn.
+- `agent_main.py` now constructs the pipeline and logs a sample result.
