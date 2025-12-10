@@ -1,0 +1,8 @@
+[
+  {"id":"shoe-001","name":"Comet Runner 3000","description":"Lightweight running shoes with cushion","price":2799.0,"currency":"INR","category":"running_shoes"},
+  {"id":"shoe-002","name":"Swift Pace Lite","description":"Budget running shoe for daily jogs","price":2499.0,"currency":"INR","category":"running_shoes"},
+  {"id":"shoe-003","name":"TrailBlaze Hike","description":"Rugged trail shoes for uneven terrain","price":3499.0,"currency":"INR","category":"trail_shoes"},
+  {"id":"shirt-001","name":"Breathe Tee","description":"Moisture-wicking athletic tee","price":799.0,"currency":"INR","category":"apparel"},
+  {"id":"shorts-001","name":"Sprint Shorts","description":"Running shorts with pockets","price":999.0,"currency":"INR","category":"apparel"},
+  {"id":"shoe-004","name":"Comet Runner 3000 - Wide","description":"Wide fit of best-seller Comet Runner","price":2899.0,"currency":"INR","category":"running_shoes"}
+]

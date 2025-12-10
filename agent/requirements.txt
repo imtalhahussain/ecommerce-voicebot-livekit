@@ -1,2 +1,4 @@
 livekit-agents
 python-dotenv
+openai
+httpx
