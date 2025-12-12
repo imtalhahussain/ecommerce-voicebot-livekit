@@ -1,3 +1,7 @@
+from __future__ import annotations
+import asyncio
+from typing import Any
+
 from .tools.rag_product_search import RAGProductSearchTool
 from .intent import is_product_query
 
@@ -8,32 +12,76 @@ class VoicePipeline:
         self.tts = tts
         self.rag_tool = RAGProductSearchTool()
 
-    async def handle_audio_turn(self, audio_bytes: bytes):
-        # Step 1: STT
-        transcript = self.stt.transcribe(audio_bytes)
+    async def handle_audio_turn(self, audio_bytes: bytes) -> dict[str, Any]:
+        """
+        Orchestrate one audio turn:
+         - STT (awaited)
+         - optional RAG call (awaited)
+         - LLM chat (awaited)
+         - TTS synth (sync or async handled)
+        Returns a dict with transcript, reply text, reply audio bytes and rag_results.
+        """
+        # 1) STT: transcribe (await because implementations may be async)
+        try:
+            transcript = await self.stt.transcribe(audio_bytes)
+        except TypeError:
+            # fallback if an older STT implementation is synchronous
+            transcript = self.stt.transcribe(audio_bytes)
+
+        # Ensure transcript is a string
+        if asyncio.iscoroutine(transcript):
+            transcript = await transcript
+        transcript = (transcript or "").strip()
 
         rag_results = None
 
-        # Step 2: Check if product question
-        if is_product_query(transcript):
+        # 2) Intent detection and RAG call (if product question)
+        if transcript and is_product_query(transcript):
             try:
                 rag_results = await self.rag_tool.run(transcript)
             except Exception as e:
-                print("RAG tool error:", e)
+                print("RAG tool error:", repr(e))
+                rag_results = None
 
-        # Step 3: Build LLM prompt
+        # 3) Build prompt for LLM
         prompt = f"User said: {transcript}\n"
-
         if rag_results:
-            prompt += f"\nHere are matching products:\n{rag_results}\n"
+            prompt += "\nMatching products (from RAG):\n"
+            # format results compactly for the LLM prompt
+            for p in rag_results.get("results", rag_results if isinstance(rag_results, list) else []):
+                # handle both list-of-dicts or backend dict format
+                if isinstance(p, dict):
+                    prompt += f"- {p.get('name')} | {p.get('category')} | ₹{p.get('price')}\n"
+                else:
+                    prompt += f"- {p}\n"
         else:
-            prompt += "\nNo matching products found or not a product query.\n"
+            prompt += "\nNo product matches or not a product query.\n"
 
-        # Step 4: Call LLM
-        reply_text = await self.llm.chat(prompt)
+        # 4) Call LLM (await — your MockLLM/OpenAILLM should support async)
+        try:
+            reply_text = await self.llm.chat(prompt)
+        except TypeError:
+            # if llm.chat is sync, run in thread
+            reply_text = await asyncio.to_thread(self.llm.chat, prompt)
 
-        # Step 5: Convert to audio
-        reply_audio = self.tts.synthesize(reply_text)
+        reply_text = (reply_text or "").strip()
+
+        # 5) TTS: may be sync or async. Try await first, else run in thread.
+        reply_audio = b""
+        try:
+            # some TTS implementations provide async synthesize
+            reply_audio_candidate = self.tts.synthesize(reply_text)
+            if asyncio.iscoroutine(reply_audio_candidate):
+                reply_audio = await reply_audio_candidate
+            else:
+                # sync result (bytes) - ensure it's bytes
+                reply_audio = reply_audio_candidate
+        except TypeError:
+            # fallback: run potentially blocking synth in thread
+            reply_audio = await asyncio.to_thread(self.tts.synthesize, reply_text)
+        except Exception as e:
+            print("TTS error:", repr(e))
+            reply_audio = b""
 
         return {
             "user_transcript": transcript,
