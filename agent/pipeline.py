@@ -1,43 +1,43 @@
-from __future__ import annotations
+from .tools.rag_product_search import RAGProductSearchTool
+from .intent import is_product_query
 
-from dataclasses import dataclass
-from typing import Dict, Any
-
-from .models.stt import SpeechToText
-from .models.llm import LLMClient
-from .models.tts import TextToSpeech
-
-
-@dataclass
 class VoicePipeline:
-    """
-    End-to-end voice pipeline:
+    def __init__(self, stt, llm, tts):
+        self.stt = stt
+        self.llm = llm
+        self.tts = tts
+        self.rag_tool = RAGProductSearchTool()
 
-    audio (bytes) -> STT -> text -> LLM -> reply text -> TTS -> reply audio (bytes)
-    """
+    async def handle_audio_turn(self, audio_bytes: bytes):
+        # Step 1: STT
+        transcript = self.stt.transcribe(audio_bytes)
 
-    stt: SpeechToText
-    llm: LLMClient
-    tts: TextToSpeech
+        rag_results = None
 
-    async def handle_audio_turn(self, audio: bytes) -> Dict[str, Any]:
-        """
-        Process a single turn from user audio to bot audio reply.
+        # Step 2: Check if product question
+        if is_product_query(transcript):
+            try:
+                rag_results = await self.rag_tool.run(transcript)
+            except Exception as e:
+                print("RAG tool error:", e)
 
-        In a real-time LiveKit setup, this would work on streams/chunks
-        instead of a single `audio` blob.
-        """
-        # 1) Audio -> text
-        user_text = await self.stt.transcribe(audio)
+        # Step 3: Build LLM prompt
+        prompt = f"User said: {transcript}\n"
 
-        # 2) Text -> LLM reply text
-        reply_text = await self.llm.chat(user_text)
+        if rag_results:
+            prompt += f"\nHere are matching products:\n{rag_results}\n"
+        else:
+            prompt += "\nNo matching products found or not a product query.\n"
 
-        # 3) Reply text -> audio bytes
-        reply_audio = await self.tts.synthesize(reply_text)
+        # Step 4: Call LLM
+        reply_text = await self.llm.chat(prompt)
+
+        # Step 5: Convert to audio
+        reply_audio = self.tts.synthesize(reply_text)
 
         return {
-            "user_transcript": user_text,
+            "user_transcript": transcript,
             "assistant_reply_text": reply_text,
             "assistant_reply_audio": reply_audio,
+            "rag_results": rag_results,
         }
