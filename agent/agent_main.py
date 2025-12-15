@@ -11,7 +11,7 @@ from .config import settings
 from .pipeline import VoicePipeline
 from .models.stt import DummySpeechToText
 from .models.llm import MockLLM
-from .models.tts import DummyTextToSpeech
+from .models.pyttsx3_tts import Pyttsx3TextToSpeech
 from .models.whisper_stt import WhisperSpeechToText
 
 
@@ -41,7 +41,7 @@ async def run_agent(context: AgentContext):
     pipeline = VoicePipeline(
         stt=select_stt(),
         llm=select_llm(),
-        tts=DummyTextToSpeech(),
+        tts=Pyttsx3TextToSpeech(),
     )
 
     # 🔴 IMPORTANT CHANGE: read REAL audio file for Whisper
