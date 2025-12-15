@@ -1,24 +1,23 @@
+# agent/tools/rag_product_search.py
 from __future__ import annotations
 import os
 import httpx
 from typing import Any, Dict
 
-BACKEND_URL = os.getenv(
-    "BACKEND_URL",
-    "http://127.0.0.1:8000"
-)
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
 class RAGProductSearchTool:
     """
-    Calls POST /products/search on backend.
+    Calls backend POST /products/search
     """
 
     name = "rag_product_search"
-    description = "Search products using backend catalog"
+    description = "Search products from backend using RAG"
 
     async def run(self, query: str) -> Dict[str, Any]:
         payload = {
             "query": query,
+            "max_price": 3000,
             "limit": 5
         }
 
