@@ -1,29 +1,30 @@
-from __future__ import annotations
+import pyttsx3
+import io
+import wave
 
-from abc import ABC, abstractmethod
+class FemaleTextToSpeech:
+    def __init__(self):
+        self.engine = pyttsx3.init()
 
+        # Select female voice if available
+        voices = self.engine.getProperty("voices")
+        for v in voices:
+            if "female" in v.name.lower() or "zira" in v.name.lower():
+                self.engine.setProperty("voice", v.id)
+                break
 
-class TextToSpeech(ABC):
-    """Abstract interface for text-to-speech engines."""
+        self.engine.setProperty("rate", 165)
 
-    @abstractmethod
-    async def synthesize(self, text: str) -> bytes:
-        """
-        Convert a text response into audio bytes that can be streamed to
-        the user via LiveKit.
-        """
-        raise NotImplementedError
+    def synthesize(self, text: str) -> bytes:
+        buffer = io.BytesIO()
 
+        def save_audio():
+            self.engine.save_to_file(text, "temp_tts.wav")
+            self.engine.runAndWait()
 
-class DummyTextToSpeech(TextToSpeech):
-    """
-    Dummy TTS implementation.
+        save_audio()
 
-    Returns placeholder bytes so we can test the pipeline without
-    integrating a real TTS provider yet.
-    """
+        with wave.open("temp_tts.wav", "rb") as wf:
+            buffer.write(wf.readframes(wf.getnframes()))
 
-    async def synthesize(self, text: str) -> bytes:
-        # Just encode the text as bytes for now. In reality, this would be
-        # encoded audio (e.g., PCM / Opus).
-        return text.encode("utf-8")
+        return buffer.getvalue()
