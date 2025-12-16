@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 from typing import Any
 
 from .tools.rag_product_search import RAGProductSearchTool
@@ -12,9 +13,11 @@ class VoicePipeline:
         self.rag_tool = RAGProductSearchTool()
 
     async def handle_audio_turn(self, audio_bytes: bytes) -> dict[str, Any]:
+        # 1. STT
         transcript = await self.stt.transcribe(audio_bytes)
         transcript = (transcript or "").strip()
 
+        # 2. RAG
         rag_results = None
         if transcript and is_product_query(transcript):
             try:
@@ -22,9 +25,9 @@ class VoicePipeline:
             except Exception as e:
                 print("RAG error:", e)
 
+        # 3. Prompt
         prompt = f"""
 You are an AI shopping assistant.
-Be short, clear, and helpful.
 
 User: {transcript}
 """
@@ -34,10 +37,12 @@ User: {transcript}
             for p in rag_results.get("results", []):
                 prompt += f"- {p['name']} | ₹{p['price']}\n"
 
+        # 4. LLM
         reply_text = await self.llm.chat(prompt)
         reply_text = reply_text.strip()
 
-        reply_audio = self.tts.synthesize(reply_text)
+        # 5. TTS (IMPORTANT: await)
+        reply_audio = await self.tts.synthesize(reply_text)
 
         return {
             "user_transcript": transcript,
