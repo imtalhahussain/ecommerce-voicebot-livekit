@@ -1,26 +1,10 @@
-from pydantic_settings import BaseSettings
+import os
+from dotenv import load_dotenv
 
-class AgentSettings(BaseSettings):
-    # LiveKit (future use)
-    livekit_url: str | None = None
-    livekit_api_key: str | None = None
-    livekit_api_secret: str | None = None
+load_dotenv()
 
-    # OpenAI (future)
-    openai_api_key: str | None = None
+LIVEKIT_URL = os.getenv("LIVEKIT_URL")
+LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
+LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
 
-    # STT
-    stt_provider: str = "mock"
-
-    # Audio testing
-    audio_file: str | None = None
-    use_livekit_stub: bool = False
-
-    # ElevenLabs
-    elevenlabs_api_key: str | None = None
-    elevenlabs_voice_id: str = "EXAVITQu4vr4xnSDxMaL"
-    class Config:
-        env_file = ".env"
-        extra = "ignore"   
-
-settings = AgentSettings()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

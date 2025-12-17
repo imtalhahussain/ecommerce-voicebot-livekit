@@ -1,30 +1,19 @@
-import pyttsx3
-import io
-import wave
+import edge_tts
 
-class FemaleTextToSpeech:
+class TextToSpeech:
     def __init__(self):
-        self.engine = pyttsx3.init()
+        self.voice = "en-IN-NeerjaNeural"
 
-        # Select female voice if available
-        voices = self.engine.getProperty("voices")
-        for v in voices:
-            if "female" in v.name.lower() or "zira" in v.name.lower():
-                self.engine.setProperty("voice", v.id)
-                break
+    async def synthesize(self, text: str) -> bytes:
+        communicate = edge_tts.Communicate(
+            text=text,
+            voice=self.voice,
+            output_format="raw-16khz-16bit-mono-pcm"  # 🔴 REQUIRED
+        )
 
-        self.engine.setProperty("rate", 165)
+        audio = b""
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio += chunk["data"]
 
-    def synthesize(self, text: str) -> bytes:
-        buffer = io.BytesIO()
-
-        def save_audio():
-            self.engine.save_to_file(text, "temp_tts.wav")
-            self.engine.runAndWait()
-
-        save_audio()
-
-        with wave.open("temp_tts.wav", "rb") as wf:
-            buffer.write(wf.readframes(wf.getnframes()))
-
-        return buffer.getvalue()
+        return audio

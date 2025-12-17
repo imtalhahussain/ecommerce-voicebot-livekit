@@ -1,32 +1,29 @@
-# agent/models/whisper_stt.py
+import numpy as np
+from faster_whisper import WhisperModel
+from livekit.rtc import AudioFrame
 
-import whisper
-import asyncio
-import tempfile
-import os
 
 class WhisperSpeechToText:
-    def __init__(self, model_size="base"):
-        print("Using Whisper STT")
-        self.model = whisper.load_model(model_size)
+    def __init__(self):
+        self.model = WhisperModel("base", compute_type="int8")
 
-    async def transcribe(self, audio_bytes: bytes) -> str:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-            tmp.write(audio_bytes)
-            tmp_path = tmp.name
+    async def transcribe(self, frame: AudioFrame) -> str:
+        # PCM int16 → numpy
+        pcm = np.frombuffer(frame.data, dtype=np.int16)
 
-        try:
-            result = await asyncio.to_thread(
-                self.model.transcribe,
-                tmp_path,
-                language="en",
-                fp16=False
-            )
+        # int16 → float32 [-1, 1]
+        audio = pcm.astype(np.float32) / 32768.0
 
-            text = result.get("text", "").strip()
-            print(f"[Whisper DEBUG] Transcript = '{text}'")
+        segments, _ = self.model.transcribe(
+            audio,
+            language="en",
+            vad_filter=False,
+            beam_size=5,
+            temperature=0.0,
+            log_prob_threshold=-5.0,
+            no_speech_threshold=0.1,
+            compression_ratio_threshold=5.0,
+            condition_on_previous_text=False,
+        )
 
-            return text
-
-        finally:
-            os.remove(tmp_path)
+        return " ".join(seg.text for seg in segments).strip()

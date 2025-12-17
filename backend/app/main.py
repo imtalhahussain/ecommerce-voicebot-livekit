@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .api import products, orders  # ensure package import works
+from backend.app.api.products import router as products_router
+from backend.app.api.orders import router as orders_router
 
 app = FastAPI(title="Ecommerce Voicebot Backend", version="0.2.0")
 
@@ -11,9 +12,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(products.router)
-app.include_router(orders.router)
+app.include_router(products_router)
+app.include_router(orders_router)
+
 
 @app.get("/health")
 def health():
-    return {"status":"ok"}
+    return {"status": "ok"}

@@ -1,4 +1,6 @@
 .env
+# virtual environment
+venv/
 .venv/
 __pycache__/
 node_modules/
@@ -7,4 +9,14 @@ __pycache__/
 
 *.pyc
 
-.env
+# Audio + STT artifacts
+audio/*.wav
+*.srt
+*.vtt
+*.tsv
+*.json
+*.txt
+
+#Reply_Audio
+reply.wav
+temp_*.wav

@@ -1,41 +1,23 @@
-from __future__ import annotations
-
-from abc import ABC, abstractmethod
-
-
-class SpeechToText(ABC):
-    """Abstract interface for speech-to-text engines."""
-
-    @abstractmethod
-    async def transcribe(self, audio: bytes) -> str:
-        """
-        Convert raw audio bytes into a text transcript.
-
-        In a real implementation, `audio` would be a chunk/stream from
-        LiveKit. For Day 3 we just simulate this.
-        """
-        raise NotImplementedError
+import numpy as np
+from faster_whisper import WhisperModel
+from livekit.rtc import AudioFrame
 
 
-class DummySpeechToText(SpeechToText):
-    """
-    Dummy STT implementation used for early pipeline testing.
+class SpeechToText:
+    def __init__(self):
+        self.model = WhisperModel("base", compute_type="int8")
 
-    Instead of actually decoding audio, it returns a fixed string so we can
-    verify the pipeline and LLM/TTS layers.
-    """
+    async def transcribe(self, frame: AudioFrame) -> str:
+        # Convert PCM bytes → int16
+        pcm = np.frombuffer(frame.data, dtype=np.int16)
 
-    async def transcribe(self, audio: bytes) -> str:
-        # In later days, this will be replaced by a real STT engine.
-        return "Hi, I want to buy running shoes under 3000 rupees."
+        # int16 → float32 [-1, 1]
+        audio = pcm.astype(np.float32) / 32768.0
 
-def build_stt(provider: str = "mock", **kwargs):
-    """
-    Factory helper: provider: "mock" | "whisper"
-    """
-    if provider == "whisper":
-        from .stt_whisper import LocalWhisperSTT
-        return LocalWhisperSTT(**kwargs)
-    # default mock
-    from .stt import DummySpeechToText as _D
-    return _D()
+        segments, _ = self.model.transcribe(
+            audio,
+            language="en",
+            vad_filter=True,
+        )
+
+        return " ".join(seg.text for seg in segments).strip()
