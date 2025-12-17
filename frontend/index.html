@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ecommerce Voicebot Demo</title>
+
+  <script type="module">
+    import * as LiveKit from "https://unpkg.com/livekit-client/dist/livekit-client.esm.mjs";
+
+    const serverUrl = "wss://ecommerce-voicebot-vcef14em.livekit.cloud";
+    const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6InRlc3Qtcm9vbSIsImNhblB1Ymxpc2giOnRydWUsImNhblN1YnNjcmliZSI6dHJ1ZSwiY2FuUHVibGlzaERhdGEiOnRydWV9LCJzdWIiOiJ3ZWItdXNlciIsImlzcyI6IkFQSVc5dTdwbWZwOGQ5WCIsIm5iZiI6MTc2NjAxMDE2NSwiZXhwIjoxNzY2MDMxNzY1fQ.QZBNqUVscv9AVgopTriJPRws3VE-pxEuywXZnY_CcJs";
+
+    let room;
+    let audioContext;
+
+    async function start() {
+      if (room) return;
+
+      console.log("Start clicked");
+
+      // 🔑 UNLOCK AUDIO (CRITICAL)
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      await audioContext.resume();
+      console.log("AudioContext resumed");
+
+      room = new LiveKit.Room();
+      await room.connect(serverUrl, token);
+      console.log("Connected to room");
+
+      const micTrack = await LiveKit.createLocalAudioTrack();
+      await room.localParticipant.publishTrack(micTrack);
+      console.log("Mic published");
+
+      room.on(LiveKit.RoomEvent.TrackSubscribed, (track) => {
+        console.log("Track subscribed:", track.kind);
+
+        if (track.kind === "audio") {
+          const audioEl = track.attach();
+          audioEl.autoplay = true;
+          audioEl.muted = false;
+          audioEl.volume = 1.0;
+          document.body.appendChild(audioEl);
+
+          // 🔑 FORCE PLAY
+          audioEl.play().catch(err => {
+            console.error("Play failed:", err);
+          });
+        }
+      });
+    }
+
+    window.start = start;
+  </script>
+</head>
+
+<body style="font-family: sans-serif; text-align: center; margin-top: 40px;">
+  <h1>🛒 Ecommerce Voicebot</h1>
+  <p>Click once → allow mic → listen for beep</p>
+
+  <button
+    onclick="start()"
+    style="font-size: 18px; padding: 10px 20px;"
+  >
+    🎤 Start Talking
+  </button>
+</body>
+</html>

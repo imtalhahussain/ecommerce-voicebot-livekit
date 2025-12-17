@@ -1,9 +1,6 @@
-print("RUNNING FILE:", __file__)
-
 import edge_tts
 
-
-class TextToSpeech:
+class EdgeTTS:
     def __init__(self, voice="en-IN-NeerjaNeural"):
         self.voice = voice
 
@@ -11,14 +8,11 @@ class TextToSpeech:
         communicate = edge_tts.Communicate(
             text=text,
             voice=self.voice,
-            rate="+0%",
-            volume="+0%",
         )
 
-        audio_bytes = bytearray()
-
+        audio = b""
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
-                audio_bytes.extend(chunk["data"])
+                audio += chunk["data"]
 
-        return bytes(audio_bytes)
+        return audio

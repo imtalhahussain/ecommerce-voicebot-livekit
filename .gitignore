@@ -6,7 +6,7 @@ __pycache__/
 node_modules/
 
 __pycache__/
-
+digest.txt
 *.pyc
 
 # Audio + STT artifacts

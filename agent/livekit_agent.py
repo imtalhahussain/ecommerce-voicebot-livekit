@@ -1,129 +1,49 @@
-print("RUNNING FILE:", __file__)
-
-from dotenv import load_dotenv
-load_dotenv()
-
 import asyncio
 import numpy as np
 
 from livekit.agents import JobContext, WorkerOptions, cli, AutoSubscribe
-from livekit.rtc import (
-    AudioSource,
-    LocalAudioTrack,
-    AudioFrame,
-    TrackKind,
-    AudioStream,
-)
+from livekit.rtc import AudioSource, LocalAudioTrack, AudioFrame
+from agent.config import LIVEKIT_URL
 
-# ✅ YOUR EXISTING MODELS (DO NOT CHANGE THEM)
-from agent.models.whisper_stt import WhisperSpeechToText
-from agent.models.edge_tts import TextToSpeech
+SAMPLE_RATE = 48000
+CHANNELS = 1
 
-
+def generate_beep(duration_sec=1.0, freq=440):
+    t = np.linspace(0, duration_sec, int(SAMPLE_RATE * duration_sec), False)
+    tone = 0.3 * np.sin(2 * np.pi * freq * t)
+    pcm = (tone * 32767).astype(np.int16)
+    return pcm
 
 async def entrypoint(ctx: JobContext):
-    print("🔊 LiveKit agent connected")
-
-    # Subscribe only to audio
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    print("✅ Room connected")
-    print("👥 Local participant:", ctx.room.local_participant.identity)
+    print("Agent connected to room")
 
-    # STT & TTS
-    stt = WhisperSpeechToText()
-    tts = TextToSpeech()
+    audio_source = AudioSource(SAMPLE_RATE, CHANNELS)
+    track = LocalAudioTrack.create_audio_track("agent-audio", audio_source)
+    await ctx.room.local_participant.publish_track(track)
 
-    # Agent audio output
-    audio_source = AudioSource(sample_rate=16000, num_channels=1)
-    agent_track = LocalAudioTrack.create_audio_track(
-        "agent-audio",
-        audio_source,
+    # 🔊 PLAY TEST BEEP
+    pcm = generate_beep()
+    frame = AudioFrame(
+        data=pcm.tobytes(),
+        sample_rate=SAMPLE_RATE,
+        num_channels=CHANNELS,
+        samples_per_channel=len(pcm),
     )
 
-    await ctx.room.local_participant.publish_track(agent_track)
-    print("🔊 Agent audio track published")
+    await audio_source.capture_frame(frame)
+    print("Agent played test beep")
 
-    # Kickstart audio stream (important for some browsers)
-    silence = np.zeros(1600, dtype=np.int16)
-    await audio_source.capture_frame(
-        AudioFrame(
-            data=silence.tobytes(),
-            sample_rate=16000,
-            num_channels=1,
-            samples_per_channel=len(silence),
-        )
-    )
+    while True:
+        await asyncio.sleep(1)
 
-    async def handle_audio(track):
-        print("🎧 Audio handler started")
-
-        audio_stream = AudioStream(track)
-
-        # 🔑 BUFFER SETTINGS (CRITICAL)
-        buffer = bytearray()
-        SAMPLE_RATE = 16000
-        BYTES_PER_SAMPLE = 2  # int16
-        TARGET_SECONDS = 1.0  # Whisper needs ~1s chunks
-
-        TARGET_BYTES = int(SAMPLE_RATE * BYTES_PER_SAMPLE * TARGET_SECONDS)
-
-        async for event in audio_stream:
-            frame = event.frame
-
-            # Accumulate raw PCM
-            buffer.extend(frame.data)
-
-            # Not enough audio yet
-            if len(buffer) < TARGET_BYTES:
-                continue
-
-            # Build a single AudioFrame for Whisper
-            audio_frame = AudioFrame(
-                data=bytes(buffer),
-                sample_rate=16000,
-                num_channels=1,
-                samples_per_channel=len(buffer) // 2,
-            )
-
-            buffer.clear()  # reset buffer
-
-            try:
-                text = await stt.transcribe(audio_frame)
-                if not text:
-                    continue
-
-                print("🗣️ User:", text)
-
-                reply = "Yes, I can hear you. How can I help you?"
-                audio = await tts.synthesize(reply)
-
-                pcm = np.frombuffer(audio, dtype=np.int16)
-                await audio_source.capture_frame(
-                    AudioFrame(
-                        data=pcm.tobytes(),
-                        sample_rate=16000,
-                        num_channels=1,
-                        samples_per_channel=len(pcm),
-                    )
-                )
-
-                print("🔊 Agent spoke")
-
-            except Exception as e:
-                print("❌ Audio pipeline error:", e)
-
-    # Subscribe to microphone tracks
-    @ctx.room.on("track_subscribed")
-    def on_track_subscribed(track, publication, participant):
-        if track.kind == TrackKind.KIND_AUDIO:
-            print("🎤 Microphone subscribed from:", participant.identity)
-            asyncio.create_task(handle_audio(track))
-
-
-if __name__ == "__main__":
+def main():
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
-            agent_name="voicebot",
+            ws_url=LIVEKIT_URL,
         )
     )
+
+if __name__ == "__main__":
+    main()

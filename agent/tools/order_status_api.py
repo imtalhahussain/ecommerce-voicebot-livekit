@@ -1,9 +1,7 @@
-from __future__ import annotations
-import os
+from agent.config import BACKEND_URL
 import httpx
 from typing import Any, Dict
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
 class OrderStatusAPITool:
     name = "get_order_status_api"
