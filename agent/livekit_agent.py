@@ -1,4 +1,5 @@
 import asyncio
+import time
 import numpy as np
 
 from livekit.agents import JobContext, WorkerOptions, cli, AutoSubscribe
@@ -15,11 +16,14 @@ from agent.llm import GroqAgent
 from agent.models.edge_tts import EdgeTTS
 from agent.config import LIVEKIT_URL
 from agent.memory import ConversationMemory
+from agent.intent import detect_intent, Intent
+from agent.tools import search_products, track_order
+
 
 TARGET_SR = 16000
 CHANNELS = 1
 
-# ---- Speech detection tuning (DO NOT TOUCH) ----
+# ---- Speech detection tuning ----
 SPEECH_RMS = 900
 SILENCE_FRAMES = 8
 MIN_UTTERANCE_BYTES = TARGET_SR * 2  # ~1 second
@@ -27,15 +31,13 @@ MIN_UTTERANCE_BYTES = TARGET_SR * 2  # ~1 second
 
 def resample_48k_to_16k(pcm_48k: bytes) -> bytes:
     audio = np.frombuffer(pcm_48k, dtype=np.int16)
-    audio_16k = audio[::3]  # 48k → 16k
-    return audio_16k.tobytes()
+    return audio[::3].tobytes()
 
 
 async def entrypoint(ctx: JobContext):
     print("🚀 Agent starting")
-
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    print("🎤 Agent connected")
+    print("🎤 Connected to room")
 
     # ---- Publish agent audio ----
     audio_source = AudioSource(TARGET_SR, CHANNELS)
@@ -50,10 +52,9 @@ async def entrypoint(ctx: JobContext):
     memory = ConversationMemory()
 
     agent_speaking = asyncio.Event()
+    stop_tts = asyncio.Event()
 
     async def handle_audio(track):
-        print("🔊 AudioStream started")
-
         buffer_48k = bytearray()
         utterance_16k = bytearray()
         silence_count = 0
@@ -61,10 +62,6 @@ async def entrypoint(ctx: JobContext):
 
         async for event in AudioStream(track):
             if not hasattr(event, "frame"):
-                continue
-
-            # prevent feedback loop
-            if agent_speaking.is_set():
                 continue
 
             frame: AudioFrame = event.frame
@@ -83,9 +80,13 @@ async def entrypoint(ctx: JobContext):
             rms = int(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
             print("🎚 RMS:", rms)
 
+            # ---- BARGE-IN ----
+            if agent_speaking.is_set() and rms >= SPEECH_RMS:
+                print("⛔ Barge-in detected")
+                stop_tts.set()
+                agent_speaking.clear()
+
             if rms >= SPEECH_RMS:
-                if not in_speech:
-                    print("🟢 Speech started")
                 in_speech = True
                 silence_count = 0
                 utterance_16k.extend(pcm_16k)
@@ -98,69 +99,120 @@ async def entrypoint(ctx: JobContext):
                 if silence_count >= SILENCE_FRAMES:
                     in_speech = False
 
-                    if len(utterance_16k) >= MIN_UTTERANCE_BYTES:
-                        print("🧠 Sending utterance to STT...")
-
-                        text = await stt.transcribe(bytes(utterance_16k))
+                    if len(utterance_16k) < MIN_UTTERANCE_BYTES:
                         utterance_16k.clear()
-                        silence_count = 0
+                        continue
 
-                        print("🧠 STT:", repr(text))
-                        if not text:
-                            continue
+                    turn_start = time.perf_counter()
 
-                        # ---- Conversation memory ----
-                        memory.add_user(text)
+                    # ---- STT ----
+                    stt_start = time.perf_counter()
+                    text = await stt.transcribe(bytes(utterance_16k))
+                    stt_time = (time.perf_counter() - stt_start) * 1000
+                    utterance_16k.clear()
 
+                    if not text:
+                        continue
+
+                    print("🧠 STT:", text)
+                    memory.add_user(text)
+
+                    # ---- INTENT ROUTING ----
+                    intent = detect_intent(text)
+                    print("🧭 Intent:", intent)
+
+                    if intent == Intent.PRODUCT_SEARCH:
+                        products = search_products(text)
+                        reply = "Here are some options:\n" + "\n".join(
+                            f"- {p['name']} for ₹{p['price']}"
+                            for p in products
+                        )
+
+                    elif intent == Intent.ORDER_TRACKING:
+                        order = track_order("ORD123")
+                        reply = (
+                            f"Your order {order['order_id']} is "
+                            f"{order['status']}. Expected delivery is "
+                            f"{order['expected_delivery']}."
+                        )
+
+                    else:
+                        llm_start = time.perf_counter()
                         reply = await llm.reply(text, memory)
-                        memory.add_assistant(reply)
+                        llm_time = (time.perf_counter() - llm_start) * 1000
 
-                        print("🤖 Reply:", reply)
+                    memory.add_assistant(reply)
+                    print("🤖 Reply:", reply)
 
-                        # ---- Speak ----
-                        agent_speaking.set()
+                    # ---- TTS ----
+                    agent_speaking.set()
+                    stop_tts.clear()
 
-                        audio_bytes = await tts.synthesize(reply)
-                        out_samples = np.frombuffer(audio_bytes, dtype=np.int16)
+                    tts_start = time.perf_counter()
+                    audio_bytes = await tts.synthesize(reply)
+                    tts_time = (time.perf_counter() - tts_start) * 1000
 
-                        frame_size = 320  # 20ms @ 16kHz
-                        for i in range(0, len(out_samples), frame_size):
-                            chunk = out_samples[i:i + frame_size]
-                            if len(chunk) < frame_size:
-                                break
+                    out_samples = np.frombuffer(audio_bytes, dtype=np.int16)
+                    frame_size = 320  # 20ms
 
-                            out_frame = AudioFrame(
+                    for i in range(0, len(out_samples), frame_size):
+                        if stop_tts.is_set():
+                            print("🛑 TTS interrupted")
+                            break
+
+                        chunk = out_samples[i:i + frame_size]
+                        if len(chunk) < frame_size:
+                            break
+
+                        await audio_source.capture_frame(
+                            AudioFrame(
                                 data=chunk.tobytes(),
                                 sample_rate=TARGET_SR,
                                 num_channels=1,
-                                samples_per_channel=len(chunk),
+                                samples_per_channel=frame_size,
                             )
-                            await audio_source.capture_frame(out_frame)
-                            await asyncio.sleep(0.02)
+                        )
+                        await asyncio.sleep(0.02)
 
-                        agent_speaking.clear()
-                        print("✅ Reply audio streamed")
+                    # ---- MULTI-FRAME SILENCE FLUSH (CRACKLE FIX) ----
+                    silence = np.zeros(frame_size, dtype=np.int16)
+                    for _ in range(12):  # ~240ms silence
+                        await audio_source.capture_frame(
+                            AudioFrame(
+                                data=silence.tobytes(),
+                                sample_rate=TARGET_SR,
+                                num_channels=1,
+                                samples_per_channel=frame_size,
+                            )
+                        )
+                        await asyncio.sleep(0.02)
 
-                    else:
-                        utterance_16k.clear()
+                    agent_speaking.clear()
+
+                    total = (time.perf_counter() - turn_start) * 1000
+                    print(
+                        f"\n📊 METRICS | STT {stt_time:.0f}ms | "
+                        f"TTS {tts_time:.0f}ms | TOTAL {total:.0f}ms\n"
+                    )
 
     def attach(track):
         if track.kind == TrackKind.KIND_AUDIO:
-            print("🔊 Subscribed to user audio track")
             asyncio.create_task(handle_audio(track))
 
     @ctx.room.on("track_subscribed")
     def on_track(track, publication, participant):
         attach(track)
 
-    # attach already published tracks
     for p in ctx.room.remote_participants.values():
         for pub in p.track_publications.values():
             if pub.track:
                 attach(pub.track)
 
-    while True:
-        await asyncio.sleep(1)
+    try:
+        while True:
+            await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        print("🛑 Agent shutdown cleanly")
 
 
 def main():

@@ -53,7 +53,7 @@
     import * as LiveKit from "https://unpkg.com/livekit-client/dist/livekit-client.esm.mjs";
 
     const serverUrl = "wss://ecommerce-voicebot-vcef14em.livekit.cloud";
-    const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6InRlc3Qtcm9vbSIsImNhblB1Ymxpc2giOnRydWUsImNhblN1YnNjcmliZSI6dHJ1ZSwiY2FuUHVibGlzaERhdGEiOnRydWV9LCJzdWIiOiJ3ZWItdXNlciIsImlzcyI6IkFQSVc5dTdwbWZwOGQ5WCIsIm5iZiI6MTc2NjA3MTc0OCwiZXhwIjoxNzY2MDkzMzQ4fQ.eI9lY2vWwa14EULiYF7GW0itaofdi2eNzjH2PkaQbBA";
+    const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6InRlc3Qtcm9vbSIsImNhblB1Ymxpc2giOnRydWUsImNhblN1YnNjcmliZSI6dHJ1ZSwiY2FuUHVibGlzaERhdGEiOnRydWV9LCJzdWIiOiJ3ZWItdXNlciIsImlzcyI6IkFQSVc5dTdwbWZwOGQ5WCIsIm5iZiI6MTc2NjA5Mzg5MywiZXhwIjoxNzY2MTE1NDkzfQ.5By6Ucv9r2sEOcHi3fxWLsplnJYnzKqQ4RPCrkHHaHg";
 
     let room;
     let audioContext;
@@ -134,7 +134,7 @@
         if (track.kind === "audio") {
           log("🔊 Agent audio track subscribed");
           const audioEl = track.attach();
-          audioEl.autoplay = true;
+          audioEl.autoplay = true;eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6InRlc3Qtcm9vbSIsImNhblB1Ymxpc2giOnRydWUsImNhblN1YnNjcmliZSI6dHJ1ZSwiY2FuUHVibGlzaERhdGEiOnRydWV9LCJzdWIiOiJ3ZWItdXNlciIsImlzcyI6IkFQSVc5dTdwbWZwOGQ5WCIsIm5iZiI6MTc2NjA3MTc0OCwiZXhwIjoxNzY2MDkzMzQ4fQ.eI9lY2vWwa14EULiYF7GW0itaofdi2eNzjH2PkaQbBA
           audioEl.muted = false;
           audioEl.volume = 1.0;
           document.body.appendChild(audioEl);
