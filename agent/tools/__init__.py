@@ -1,23 +1,44 @@
 # agent/tools/__init__.py
 
-def search_products(query: str):
+from typing import List, Dict
+
+
+def search_products(query: str) -> List[Dict]:
     """
-    Mock product search.
-    Replace with DB / API / RAG later.
+    Structured product search result.
     """
     return [
-        {"name": "Nike Run Swift", "price": 2899},
-        {"name": "Adidas Duramo SL", "price": 2599},
-        {"name": "Puma Velocity Nitro", "price": 2999},
+        {
+            "id": "SKU123",
+            "name": "Nike Run Swift",
+            "price": 2899,
+            "category": "Running Shoes",
+            "in_stock": True,
+        },
+        {
+            "id": "SKU124",
+            "name": "Adidas Duramo SL",
+            "price": 2599,
+            "category": "Running Shoes",
+            "in_stock": True,
+        },
+        {
+            "id": "SKU125",
+            "name": "Puma Velocity Nitro",
+            "price": 2999,
+            "category": "Running Shoes",
+            "in_stock": False,
+        },
     ]
 
 
-def track_order(order_id: str):
+def track_order(order_id: str) -> Dict:
     """
-    Mock order tracking.
+    Structured order tracking result.
     """
     return {
         "order_id": order_id,
         "status": "Out for delivery",
         "expected_delivery": "Tomorrow",
+        "courier": "Delhivery",
     }
