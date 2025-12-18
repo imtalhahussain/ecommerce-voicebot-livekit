@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from app.db.fake_data import load_orders
+from ..db.fake_data import load_orders
+
 
 
 router = APIRouter(prefix="/orders", tags=["orders"])

@@ -5,10 +5,7 @@ class EdgeTTS:
         self.voice = voice
 
     async def synthesize(self, text: str) -> bytes:
-        communicate = edge_tts.Communicate(
-            text=text,
-            voice=self.voice,
-        )
+        communicate = edge_tts.Communicate(text=text, voice=self.voice)
 
         audio = b""
         async for chunk in communicate.stream():

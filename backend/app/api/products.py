@@ -1,6 +1,7 @@
 from fastapi import APIRouter
-from app.db.fake_data import load_products
+from ..db.fake_data import load_products
 
+ 
 
 router = APIRouter(prefix="/products", tags=["products"])
 

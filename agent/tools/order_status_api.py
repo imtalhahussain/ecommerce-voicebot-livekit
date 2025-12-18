@@ -1,16 +1,12 @@
-from agent.config import BACKEND_URL
 import httpx
-from typing import Any, Dict
-
+from agent.config import BACKEND_URL
 
 class OrderStatusAPITool:
-    name = "get_order_status_api"
-    description = "Call backend /orders/{order_id} and return order info."
+    name = "get_order_status"
 
-    async def run(self, order_id: str) -> Dict[str, Any]:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{BACKEND_URL}/orders/{order_id}")
-            if resp.status_code == 404:
-                return {"error": "order_not_found", "order_id": order_id}
-            resp.raise_for_status()
-            return resp.json()
+    async def run(self, order_id: str):
+        async with httpx.AsyncClient() as client:
+            r = await client.get(f"{BACKEND_URL}/orders/{order_id}")
+            if r.status_code == 404:
+                return {"error": "Order not found"}
+            return r.json()

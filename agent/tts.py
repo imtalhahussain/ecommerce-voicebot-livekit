@@ -1,6 +1,6 @@
 import edge_tts
 
-class TextToSpeech:
+class EdgeTTS:
     def __init__(self, voice="en-IN-NeerjaNeural"):
         self.voice = voice
 
@@ -8,7 +8,7 @@ class TextToSpeech:
         communicate = edge_tts.Communicate(
             text=text,
             voice=self.voice,
-            output_format="raw-16khz-16bit-mono-pcm",
+            output_format="raw-16khz-16bit-mono-pcm"
         )
 
         audio = bytearray()

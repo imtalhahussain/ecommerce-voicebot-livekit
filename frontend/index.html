@@ -2,66 +2,181 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Ecommerce Voicebot Demo</title>
+  <title>Ecommerce Voicebot – Debug Mode</title>
+
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      text-align: center;
+      margin-top: 30px;
+    }
+
+    #meter {
+      width: 320px;
+      height: 18px;
+      background: #ddd;
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 16px auto;
+    }
+
+    #level {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #00c853, #ffeb3b, #ff5252);
+      transition: width 0.05s linear;
+    }
+
+    #log {
+      width: 90%;
+      max-width: 700px;
+      height: 180px;
+      margin: 20px auto;
+      padding: 10px;
+      background: #111;
+      color: #0f0;
+      font-family: monospace;
+      font-size: 12px;
+      overflow-y: auto;
+      text-align: left;
+      border-radius: 8px;
+    }
+
+    button {
+      font-size: 18px;
+      padding: 12px 24px;
+      cursor: pointer;
+    }
+  </style>
 
   <script type="module">
     import * as LiveKit from "https://unpkg.com/livekit-client/dist/livekit-client.esm.mjs";
 
     const serverUrl = "wss://ecommerce-voicebot-vcef14em.livekit.cloud";
-    const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6InRlc3Qtcm9vbSIsImNhblB1Ymxpc2giOnRydWUsImNhblN1YnNjcmliZSI6dHJ1ZSwiY2FuUHVibGlzaERhdGEiOnRydWV9LCJzdWIiOiJ3ZWItdXNlciIsImlzcyI6IkFQSVc5dTdwbWZwOGQ5WCIsIm5iZiI6MTc2NjAxMDE2NSwiZXhwIjoxNzY2MDMxNzY1fQ.QZBNqUVscv9AVgopTriJPRws3VE-pxEuywXZnY_CcJs";
+    const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6InRlc3Qtcm9vbSIsImNhblB1Ymxpc2giOnRydWUsImNhblN1YnNjcmliZSI6dHJ1ZSwiY2FuUHVibGlzaERhdGEiOnRydWV9LCJzdWIiOiJ3ZWItdXNlciIsImlzcyI6IkFQSVc5dTdwbWZwOGQ5WCIsIm5iZiI6MTc2NjA3MTc0OCwiZXhwIjoxNzY2MDkzMzQ4fQ.eI9lY2vWwa14EULiYF7GW0itaofdi2eNzjH2PkaQbBA";
 
     let room;
     let audioContext;
+    let analyser;
+    let dataArray;
+    let micTrack;
+
+    const logEl = () => document.getElementById("log");
+    const log = (msg) => {
+      console.log(msg);
+      logEl().textContent += msg + "\n";
+      logEl().scrollTop = logEl().scrollHeight;
+    };
 
     async function start() {
       if (room) return;
 
-      console.log("Start clicked");
+      log("▶️ Start clicked");
 
-      // 🔑 UNLOCK AUDIO (CRITICAL)
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      /* ========= AUDIO CONTEXT ========= */
+      audioContext = new (window.AudioContext || window.webkitAudioContext)({
+        sampleRate: 48000,
+      });
       await audioContext.resume();
-      console.log("AudioContext resumed");
+      log("🔊 AudioContext resumed");
 
+      /* ========= MIC TRACK (DSP OFF) ========= */
+      micTrack = await LiveKit.createLocalAudioTrack({
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 1,
+      });
+      log("🎤 Mic track created");
+
+      /* ========= LOCAL MIC LOOPBACK ========= */
+      const localAudio = document.createElement("audio");
+      localAudio.autoplay = true;
+      localAudio.muted = false;
+      localAudio.volume = 1.0;
+      localAudio.srcObject = new MediaStream([micTrack.mediaStreamTrack]);
+      document.body.appendChild(localAudio);
+      log("🎧 Local mic monitoring enabled (you should hear yourself)");
+
+      /* ========= MIC LEVEL METER ========= */
+      const source = audioContext.createMediaStreamSource(
+        new MediaStream([micTrack.mediaStreamTrack])
+      );
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
+      dataArray = new Uint8Array(analyser.fftSize);
+      source.connect(analyser);
+      startMeter();
+      log("🎚 Mic level meter running");
+
+      /* ========= CONNECT TO LIVEKIT ========= */
       room = new LiveKit.Room();
       await room.connect(serverUrl, token);
-      console.log("Connected to room");
+      log("🔗 Connected to LiveKit room");
 
-      const micTrack = await LiveKit.createLocalAudioTrack();
       await room.localParticipant.publishTrack(micTrack);
-      console.log("Mic published");
+      log("📤 Mic track published to LiveKit");
 
+      /* ========= RTC STATS (VERY IMPORTANT) ========= */
+      setInterval(async () => {
+        const stats = await micTrack.getRTCStatsReport();
+        for (const stat of stats.values()) {
+          if (stat.type === "outbound-rtp" && stat.kind === "audio") {
+            log(
+              `📡 packetsSent=${stat.packetsSent}, bytesSent=${stat.bytesSent}`
+            );
+          }
+        }
+      }, 3000);
+
+      /* ========= AGENT AUDIO ========= */
       room.on(LiveKit.RoomEvent.TrackSubscribed, (track) => {
-        console.log("Track subscribed:", track.kind);
-
         if (track.kind === "audio") {
+          log("🔊 Agent audio track subscribed");
           const audioEl = track.attach();
           audioEl.autoplay = true;
           audioEl.muted = false;
           audioEl.volume = 1.0;
           document.body.appendChild(audioEl);
-
-          // 🔑 FORCE PLAY
-          audioEl.play().catch(err => {
-            console.error("Play failed:", err);
-          });
         }
       });
+    }
+
+    function startMeter() {
+      const levelEl = document.getElementById("level");
+
+      function update() {
+        analyser.getByteTimeDomainData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const v = (dataArray[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / dataArray.length);
+        const percent = Math.min(100, rms * 200);
+        levelEl.style.width = percent + "%";
+        requestAnimationFrame(update);
+      }
+      update();
     }
 
     window.start = start;
   </script>
 </head>
 
-<body style="font-family: sans-serif; text-align: center; margin-top: 40px;">
-  <h1>🛒 Ecommerce Voicebot</h1>
-  <p>Click once → allow mic → listen for beep</p>
+<body>
+  <h1>🛒 Ecommerce Voicebot – Debug Mode</h1>
+  <p>
+    Speak into your <strong>wired mic</strong><br />
+    If the bar moves AND packetsSent increases, audio is reaching LiveKit.
+  </p>
 
-  <button
-    onclick="start()"
-    style="font-size: 18px; padding: 10px 20px;"
-  >
-    🎤 Start Talking
-  </button>
+  <div id="meter">
+    <div id="level"></div>
+  </div>
+
+  <button onclick="start()">🎤 Start Talking</button>
+
+  <pre id="log"></pre>
 </body>
 </html>
