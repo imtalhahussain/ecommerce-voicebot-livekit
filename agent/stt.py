@@ -1,17 +1,28 @@
 import numpy as np
 from faster_whisper import WhisperModel
 
+
 class WhisperSTT:
     def __init__(self):
-        self.model = WhisperModel("base", compute_type="int8")
+        self.model = WhisperModel(
+            "base",
+            device="cpu",
+            compute_type="int8",
+        )
 
     async def transcribe(self, pcm_bytes: bytes) -> str:
-        pcm = np.frombuffer(pcm_bytes, dtype=np.int16)
-        audio = pcm.astype(np.float32) / 32768.0
+        """
+        pcm_bytes: 16-bit PCM mono @ 16kHz
+        """
+
+        # Convert PCM16 → float32 [-1, 1]
+        audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
 
         segments, _ = self.model.transcribe(
             audio,
             language="en",
             vad_filter=True,
         )
-        return " ".join(s.text for s in segments).strip()
+
+        text = " ".join(seg.text.strip() for seg in segments)
+        return text.strip()

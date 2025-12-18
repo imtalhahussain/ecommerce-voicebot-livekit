@@ -1,63 +1,32 @@
-import os
-import json
-from google import genai
-
-from agent.tools.product_search_api import ProductSearchAPITool
-from agent.tools.order_status_api import OrderStatusAPITool
+from groq import Groq
+from agent.config import GROQ_API_KEY
 
 
-class GeminiAgent:
+class GroqAgent:
     def __init__(self):
-        self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        self.product_tool = ProductSearchAPITool()
-        self.order_tool = OrderStatusAPITool()
+        self.client = Groq(api_key=GROQ_API_KEY)
 
-    async def respond(self, user_text: str, history: list) -> str:
-        system_prompt = """
-You are an ecommerce voice assistant.
+    async def reply(self, user_text: str, memory):
+        """
+        Generate a reply using Groq with conversation memory.
+        """
 
-If a tool is needed, respond ONLY in JSON.
+        messages = []
 
-Product search:
-{
-  "tool": "search_products",
-  "args": { "query": "..." }
-}
+        # load conversation memory
+        for msg in memory.last(6):
+            messages.append({
+                "role": "user" if msg["role"] == "user" else "assistant",
+                "content": msg["parts"][0]["text"]
+            })
 
-Order status:
-{
-  "tool": "get_order_status",
-  "args": { "order_id": "ORD123" }
-}
+        # DO NOT append user_text again if memory already has it
+        # (livekit_agent already added it)
 
-Otherwise respond normally.
-"""
-
-        prompt = system_prompt + "\n"
-        for h in history:
-            prompt += f"{h['role']}: {h['content']}\n"
-        prompt += f"user: {user_text}\nassistant:"
-
-        response = self.client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=prompt,
+        response = self.client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=messages,
+            temperature=0.4,
         )
 
-        text = response.text.strip()
-
-        if text.startswith("{"):
-            try:
-                call = json.loads(text)
-
-                if call["tool"] == "search_products":
-                    result = await self.product_tool.run(**call["args"])
-                    return f"I found these products: {result.get('results', [])}"
-
-                if call["tool"] == "get_order_status":
-                    result = await self.order_tool.run(**call["args"])
-                    return f"Here is your order status: {result}"
-
-            except Exception:
-                return "Sorry, something went wrong while fetching details."
-
-        return text
+        return response.choices[0].message.content.strip()

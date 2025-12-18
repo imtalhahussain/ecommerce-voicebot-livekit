@@ -1,5 +1,4 @@
 import asyncio
-import time
 import numpy as np
 
 from livekit.agents import JobContext, WorkerOptions, cli, AutoSubscribe
@@ -12,35 +11,25 @@ from livekit.rtc import (
 )
 
 from agent.stt import WhisperSTT
-from agent.llm import GeminiAgent
+from agent.llm import GroqAgent
 from agent.models.edge_tts import EdgeTTS
 from agent.config import LIVEKIT_URL
-
-# ========================
-# AUDIO CONSTANTS
-# ========================
+from agent.memory import ConversationMemory
 
 TARGET_SR = 16000
 CHANNELS = 1
 
-VOICE_RMS_THRESHOLD = 1200     # definite speech
-NOISE_FLOOR = 600              # anything below = silence
-END_SILENCE_SECONDS = 0.7      # pause to end utterance
-MIN_UTTERANCE_SECONDS = 0.8    # ignore very short noise
+# ---- Speech detection tuning (DO NOT TOUCH) ----
+SPEECH_RMS = 900
+SILENCE_FRAMES = 8
+MIN_UTTERANCE_BYTES = TARGET_SR * 2  # ~1 second
 
-# ========================
-# UTILS
-# ========================
 
 def resample_48k_to_16k(pcm_48k: bytes) -> bytes:
-    audio = np.frombuffer(pcm_48k, dtype=np.int16).astype(np.float32)
+    audio = np.frombuffer(pcm_48k, dtype=np.int16)
     audio_16k = audio[::3]  # 48k → 16k
-    return audio_16k.astype(np.int16).tobytes()
+    return audio_16k.tobytes()
 
-
-# ========================
-# AGENT ENTRYPOINT
-# ========================
 
 async def entrypoint(ctx: JobContext):
     print("🚀 Agent starting")
@@ -48,34 +37,40 @@ async def entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
     print("🎤 Agent connected")
 
-    # Agent audio output
+    # ---- Publish agent audio ----
     audio_source = AudioSource(TARGET_SR, CHANNELS)
     agent_track = LocalAudioTrack.create_audio_track("agent-audio", audio_source)
     await ctx.room.local_participant.publish_track(agent_track)
     print("🔊 Agent audio track published")
 
+    # ---- Core components ----
     stt = WhisperSTT()
-    llm = GeminiAgent()
+    llm = GroqAgent()
     tts = EdgeTTS()
+    memory = ConversationMemory()
+
+    agent_speaking = asyncio.Event()
 
     async def handle_audio(track):
         print("🔊 AudioStream started")
 
         buffer_48k = bytearray()
-        utterance_buffer = bytearray()
-
-        speaking = False
-        utterance_start = 0.0
-        last_voice_time = 0.0
+        utterance_16k = bytearray()
+        silence_count = 0
+        in_speech = False
 
         async for event in AudioStream(track):
             if not hasattr(event, "frame"):
                 continue
 
+            # prevent feedback loop
+            if agent_speaking.is_set():
+                continue
+
             frame: AudioFrame = event.frame
             buffer_48k.extend(frame.data)
 
-            # 1 second @ 48kHz mono
+            # wait for ~1 sec of 48k audio
             if len(buffer_48k) < 48000 * 2:
                 continue
 
@@ -88,71 +83,66 @@ async def entrypoint(ctx: JobContext):
             rms = int(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
             print("🎚 RMS:", rms)
 
-            now = time.time()
-
-            # -----------------------------
-            # SPEECH DETECTION
-            # -----------------------------
-            if rms >= VOICE_RMS_THRESHOLD:
-                if speaking and (now - utterance_start) > 6.0:
-                    print("⏱ Max utterance length reached")
-                    speaking = False
-
-                if not speaking:
-                    speaking = True
-                    utterance_start = now
-                    utterance_buffer.clear()
+            if rms >= SPEECH_RMS:
+                if not in_speech:
                     print("🟢 Speech started")
-
-                last_voice_time = now
-                utterance_buffer.extend(pcm_16k)
+                in_speech = True
+                silence_count = 0
+                utterance_16k.extend(pcm_16k)
                 continue
 
-            # -----------------------------
-            # SILENCE HANDLING
-            # -----------------------------
-            if speaking and rms < NOISE_FLOOR:
-                if (now - last_voice_time) >= END_SILENCE_SECONDS:
-                    duration = now - utterance_start
-                    speaking = False
+            if in_speech:
+                silence_count += 1
+                utterance_16k.extend(pcm_16k)
 
-                    if duration < MIN_UTTERANCE_SECONDS:
-                        print("🔇 Utterance too short, discarded")
-                        utterance_buffer.clear()
-                        continue
+                if silence_count >= SILENCE_FRAMES:
+                    in_speech = False
 
-                    print("🧠 Sending utterance to STT...")
-                    text = await stt.transcribe(bytes(utterance_buffer))
-                    utterance_buffer.clear()
+                    if len(utterance_16k) >= MIN_UTTERANCE_BYTES:
+                        print("🧠 Sending utterance to STT...")
 
-                    print("🧠 STT:", repr(text))
-                    if not text:
-                        continue
+                        text = await stt.transcribe(bytes(utterance_16k))
+                        utterance_16k.clear()
+                        silence_count = 0
 
-                    reply = f"You said {text}"
-                    print("🤖 Reply:", reply)
+                        print("🧠 STT:", repr(text))
+                        if not text:
+                            continue
 
-                    # TTS output
-                    audio_bytes = await tts.synthesize(reply)
-                    out_samples = np.frombuffer(audio_bytes, dtype=np.int16)
+                        # ---- Conversation memory ----
+                        memory.add_user(text)
 
-                    frame_size = 320  # 20ms @ 16kHz
-                    for i in range(0, len(out_samples), frame_size):
-                        chunk = out_samples[i:i + frame_size]
-                        if len(chunk) < frame_size:
-                            break
+                        reply = await llm.reply(text, memory)
+                        memory.add_assistant(reply)
 
-                        out_frame = AudioFrame(
-                            data=chunk.tobytes(),
-                            sample_rate=TARGET_SR,
-                            num_channels=1,
-                            samples_per_channel=len(chunk),
-                        )
+                        print("🤖 Reply:", reply)
 
-                        await audio_source.capture_frame(out_frame)
-                        await asyncio.sleep(0.02)
+                        # ---- Speak ----
+                        agent_speaking.set()
 
-                    print("✅ Reply audio streamed")
+                        audio_bytes = await tts.synthesize(reply)
+                        out_samples = np.frombuffer(audio_bytes, dtype=np.int16)
+
+                        frame_size = 320  # 20ms @ 16kHz
+                        for i in range(0, len(out_samples), frame_size):
+                            chunk = out_samples[i:i + frame_size]
+                            if len(chunk) < frame_size:
+                                break
+
+                            out_frame = AudioFrame(
+                                data=chunk.tobytes(),
+                                sample_rate=TARGET_SR,
+                                num_channels=1,
+                                samples_per_channel=len(chunk),
+                            )
+                            await audio_source.capture_frame(out_frame)
+                            await asyncio.sleep(0.02)
+
+                        agent_speaking.clear()
+                        print("✅ Reply audio streamed")
+
+                    else:
+                        utterance_16k.clear()
 
     def attach(track):
         if track.kind == TrackKind.KIND_AUDIO:
@@ -163,7 +153,7 @@ async def entrypoint(ctx: JobContext):
     def on_track(track, publication, participant):
         attach(track)
 
-    # Handle already existing tracks
+    # attach already published tracks
     for p in ctx.room.remote_participants.values():
         for pub in p.track_publications.values():
             if pub.track:
@@ -172,10 +162,6 @@ async def entrypoint(ctx: JobContext):
     while True:
         await asyncio.sleep(1)
 
-
-# ========================
-# MAIN
-# ========================
 
 def main():
     cli.run_app(
