@@ -1,4 +1,30 @@
-livekit-agents
+# Core
 python-dotenv
-openai
-httpx
+numpy
+asyncio
+
+# LiveKit
+livekit
+livekit-agents==1.3.8
+livekit-rtc
+
+# Speech-to-Text
+faster-whisper
+av
+
+# Text-to-Speech
+edge-tts
+pydub
+
+# LLM
+groq
+
+# RAG / Embeddings (optional but included)
+sentence-transformers
+faiss-cpu
+
+# Audio utilities
+soundfile
+
+# Misc
+typing-extensions
