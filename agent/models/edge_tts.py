@@ -1,40 +1,20 @@
-import asyncio
+import edge_tts
 import io
 from pydub import AudioSegment
-import edge_tts
-
 
 class EdgeTTS:
     def __init__(self, voice="en-IN-NeerjaNeural"):
         self.voice = voice
 
     async def synthesize(self, text: str) -> bytes:
-        """
-        Returns raw PCM16 LE @ 16kHz mono
-        """
-        communicate = edge_tts.Communicate(
-            text=text,
-            voice=self.voice,
-            rate="+0%",
-            volume="+0%",
-        )
-
-        audio_bytes = bytearray()
+        communicate = edge_tts.Communicate(text, self.voice)
+        mp3 = io.BytesIO()
 
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
-                audio_bytes.extend(chunk["data"])
+                mp3.write(chunk["data"])
 
-        # ---- DECODE MP3 → PCM16 ----
-        audio = AudioSegment.from_file(
-            io.BytesIO(audio_bytes), format="mp3"
-        )
-
-        audio = (
-            audio
-            .set_frame_rate(16000)
-            .set_channels(1)
-            .set_sample_width(2)  # int16
-        )
-
+        mp3.seek(0)
+        audio = AudioSegment.from_mp3(mp3)
+        audio = audio.set_frame_rate(16000).set_channels(1)
         return audio.raw_data

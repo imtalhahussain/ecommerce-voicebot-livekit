@@ -1,48 +1,48 @@
-# rag/vector_store.py
-import faiss
-import numpy as np
-import json
-from pathlib import Path
-from rag.embeddings import embed_text
+import re
 
-DATA_PATH = Path(__file__).parent / "product_data.json"
-INDEX_PATH = Path(__file__).parent / "faiss.index"
+# Mock order database
+ORDERS = {
+    "ORT1001": "Your order ORT-1001 is out for delivery and will arrive today.",
+    "ORT1002": "Your order ORT-1002 has been delivered successfully.",
+    "ORT1003": "Your order ORT-1003 is currently being packed."
+}
 
-class ProductVectorStore:
-    def __init__(self):
-        if not DATA_PATH.exists():
-            raise FileNotFoundError(f"product_data.json not found at {DATA_PATH}")
-        self.products = json.loads(DATA_PATH.read_text(encoding="utf-8"))
-        self.index = None
 
-    def build_index(self):
-        vectors = []
-        for p in self.products:
-            text = (p.get("name", "") or "") + " " + (p.get("description", "") or "")
-            vec = embed_text(text)
-            vectors.append(vec)
+def normalize_order_id(text: str) -> str | None:
+    """
+    Normalize spoken order IDs like:
+    - 'O R T 1 0 0 1'
+    - 'ORT 1001'
+    - '1,001'
+    - 'order 1001'
+    """
 
-        vectors = np.array(vectors).astype("float32")
-        dim = vectors.shape[1]
+    text = text.upper()
 
-        index = faiss.IndexFlatL2(dim)
-        index.add(vectors)
-        self.index = index
+    # Remove commas and spaces
+    cleaned = re.sub(r"[,\s]", "", text)
 
-        faiss.write_index(index, str(INDEX_PATH))
-        print("FAISS index built and saved at:", INDEX_PATH)
+    # Extract digits
+    digits = re.findall(r"\d+", cleaned)
+    if not digits:
+        return None
 
-    def load_index(self):
-        if not INDEX_PATH.exists():
-            raise FileNotFoundError("FAISS index not found. Run build_index first.")
-        self.index = faiss.read_index(str(INDEX_PATH))
+    number = digits[-1]
 
-    def search(self, query: str, k: int = 3):
-        if self.index is None:
-            raise RuntimeError("Index not loaded. Call load_index() first.")
-        vec = np.array([embed_text(query)]).astype("float32")
-        D, I = self.index.search(vec, k)
-        results = []
-        for idx in I[0]:
-            results.append(self.products[int(idx)])
-        return results
+    # Assume ORT prefix if not spoken clearly
+    return f"ORT{number}"
+
+
+def rag_search(query: str) -> str | None:
+    order_id = normalize_order_id(query)
+
+    if not order_id:
+        print(" RAG MISS (no order id detected)")
+        return None
+
+    if order_id in ORDERS:
+        print(f" RAG HIT: {order_id}")
+        return ORDERS[order_id]
+
+    print(f" RAG MISS: {order_id}")
+    return None

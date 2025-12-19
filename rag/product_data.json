@@ -1,23 +1,12 @@
 [
   {
-    "id": "shoe-001",
-    "name": "Comet Runner 3000",
-    "description": "Lightweight running shoes ideal for daily training with breathable mesh and cushioned sole.",
-    "price": 2799,
-    "category": "running shoes"
+    "id": 1,
+    "name": "Running Shoes",
+    "description": "Lightweight running shoes for daily workouts"
   },
   {
-    "id": "shoe-002",
-    "name": "Urban Sprint Sneakers",
-    "description": "Casual everyday sneakers with soft foam padding and stylish design.",
-    "price": 1999,
-    "category": "sneakers"
-  },
-  {
-    "id": "shoe-003",
-    "name": "TrailMaster Pro",
-    "description": "Outdoor trail running shoes with aggressive grip, waterproof upper and long-distance comfort.",
-    "price": 3499,
-    "category": "trail running shoes"
+    "id": 2,
+    "name": "Sports T-Shirt",
+    "description": "Breathable fabric for intense training"
   }
 ]

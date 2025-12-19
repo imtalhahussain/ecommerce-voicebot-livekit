@@ -1,9 +1,15 @@
-# rag/embeddings.py
 from sentence_transformers import SentenceTransformer
 
-# lightweight embedding model (downloads first time)
-_model = SentenceTransformer("all-MiniLM-L6-v2")
+_model = None
 
-def embed_text(text: str):
-    """Return a list[float] embedding for the text."""
-    return _model.encode(text)
+
+def get_model():
+    global _model
+    if _model is None:
+        _model = SentenceTransformer("all-MiniLM-L6-v2")
+    return _model
+
+
+def embed(texts: list[str]):
+    model = get_model()
+    return model.encode(texts, normalize_embeddings=True)

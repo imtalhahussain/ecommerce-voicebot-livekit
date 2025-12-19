@@ -1,19 +1,15 @@
 from enum import Enum
 
-
-class Intent(str, Enum):
+class Intent(Enum):
+    GENERAL_CHAT = "general_chat"
     PRODUCT_SEARCH = "product_search"
     ORDER_TRACKING = "order_tracking"
-    GENERAL_CHAT = "general_chat"
 
 
 def detect_intent(text: str) -> Intent:
     t = text.lower()
-
-    if any(k in t for k in ["buy", "price", "cost", "under", "shoes", "running", "product"]):
-        return Intent.PRODUCT_SEARCH
-
-    if any(k in t for k in ["order", "track", "delivery", "shipped", "status"]):
+    if "order" in t or "track" in t:
         return Intent.ORDER_TRACKING
-
+    if "shoe" in t or "product" in t or "show me" in t:
+        return Intent.PRODUCT_SEARCH
     return Intent.GENERAL_CHAT

@@ -1,20 +1,14 @@
 from collections import deque
 
 class ConversationMemory:
-    def __init__(self, max_turns: int = 6):
+    def __init__(self, max_turns=6):
         self.messages = deque(maxlen=max_turns * 2)
 
-    def add_user(self, text: str):
-        self.messages.append({
-            "role": "user",
-            "parts": [{"text": text}]
-        })
+    def add_user(self, text):
+        self.messages.append({"role": "user", "content": text})
 
-    def add_assistant(self, text: str):
-        self.messages.append({
-            "role": "model",
-            "parts": [{"text": text}]
-        })
+    def add_assistant(self, text):
+        self.messages.append({"role": "assistant", "content": text})
 
-    def last(self, n: int):
-        return list(self.messages)[-n:]
+    def as_messages(self):
+        return list(self.messages)

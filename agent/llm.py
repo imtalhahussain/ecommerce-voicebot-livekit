@@ -1,5 +1,6 @@
 from groq import Groq
 from agent.config import GROQ_API_KEY
+from rag.vector_store import rag_search
 
 
 class GroqAgent:
@@ -8,20 +9,23 @@ class GroqAgent:
 
     async def reply(self, user_text: str, memory):
         """
-        Generate a reply using Groq with conversation memory.
+        Generate a reply using Groq with conversation memory
+        and backend-style order lookup.
         """
 
+        # ---- Backend action: Order lookup (RAG / tool call) ----
+        rag_result = rag_search(user_text)
+        if rag_result:
+            return rag_result
+
+        # ---- Build conversation context ----
         messages = []
 
-        # load conversation memory
-        for msg in memory.last(6):
+        for msg in memory.as_messages():
             messages.append({
-                "role": "user" if msg["role"] == "user" else "assistant",
-                "content": msg["parts"][0]["text"]
+                "role": msg["role"],
+                "content": msg["content"]
             })
-
-        # DO NOT append user_text again if memory already has it
-        # (livekit_agent already added it)
 
         response = self.client.chat.completions.create(
             model="llama-3.1-8b-instant",
