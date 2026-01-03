@@ -20,7 +20,7 @@ from agent.memory import ConversationMemory
 TARGET_SR = 16000
 CHANNELS = 1
 
-# ---- Speech detection tuning (DO NOT TOUCH) ----
+# ---- Speech detection tuning ----
 SPEECH_RMS = 900
 SILENCE_FRAMES = 8
 MIN_UTTERANCE_BYTES = TARGET_SR * 2  # ~1 second

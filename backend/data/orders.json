@@ -1,12 +1,4 @@
 [
-  {
-    "id": 1,
-    "name": "Running Shoes",
-    "description": "Lightweight running shoes for daily workouts"
-  },
-  {
-    "id": 2,
-    "name": "Sports T-Shirt",
-    "description": "Breathable fabric for intense training"
-  }
+  {"order_id":"ORD-1001","user_id":"user-99","status":"shipped","items":[{"id":"shoe-001","qty":1}],"estimated_delivery":"2025-12-15","carrier":"BlueDart"},
+  {"order_id":"ORD-1002","user_id":"user-55","status":"delivered","items":[{"id":"shirt-001","qty":2}],"estimated_delivery":"2025-11-28","carrier":"Delhivery"}
 ]

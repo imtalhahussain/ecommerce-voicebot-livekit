@@ -27,3 +27,4 @@ Inside the LiveKit voice agent:
    - Use TTS to synthesize the reply.
 3. Stream synthesized audio back to the user.
 4. Persist logs (transcripts, tool calls, errors) for analysis.
+c
