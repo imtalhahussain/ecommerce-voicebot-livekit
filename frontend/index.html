@@ -1,157 +1,483 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8" />
-  <title>Ecommerce Voicebot</title>
-
-  <style>
-    body {
-      font-family: system-ui, sans-serif;
-      text-align: center;
-      margin-top: 30px;
-    }
-
-    #meter {
-      width: 320px;
-      height: 18px;
-      background: #ddd;
-      border-radius: 10px;
-      overflow: hidden;
-      margin: 16px auto;
-    }
-
-    #level {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, #00c853, #ffeb3b, #ff5252);
-      transition: width 0.05s linear;
-    }
-
-    #log {
-      width: 90%;
-      max-width: 700px;
-      height: 180px;
-      margin: 20px auto;
-      padding: 10px;
-      background: #111;
-      color: #0f0;
-      font-family: monospace;
-      font-size: 12px;
-      overflow-y: auto;
-      text-align: left;
-      border-radius: 8px;
-    }
-
-    button {
-      font-size: 18px;
-      padding: 12px 24px;
-      cursor: pointer;
-    }
-  </style>
-
-  <script type="module">
-    import * as LiveKit from "https://unpkg.com/livekit-client/dist/livekit-client.esm.mjs";
-
-    const serverUrl = "wss://ecommerce-voicebot-vcef14em.livekit.cloud";
-    const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6InRlc3Qtcm9vbSIsImNhblB1Ymxpc2giOnRydWUsImNhblN1YnNjcmliZSI6dHJ1ZSwiY2FuUHVibGlzaERhdGEiOnRydWV9LCJzdWIiOiJ3ZWItdXNlciIsImlzcyI6IkFQSVc5dTdwbWZwOGQ5WCIsIm5iZiI6MTc2NjE1MTk5MiwiZXhwIjoxNzY2MTczNTkyfQ.9MFDM1J1dhaPR9j0BciEBRyktQWMnDj58p4RCSKEolw";
-
-    let room;
-    let audioContext;
-    let analyser;
-    let dataArray;
-    let micTrack;
-
-    const logEl = () => document.getElementById("log");
-    const log = (msg) => {
-      console.log(msg);
-      logEl().textContent += msg + "\n";
-      logEl().scrollTop = logEl().scrollHeight;
-    };
-
-    async function start() {
-      if (room) return;
-
-      log("▶️ Start clicked");
-
-      audioContext = new AudioContext({ sampleRate: 48000 });
-      await audioContext.resume();
-      log("🔊 AudioContext resumed");
-
-      micTrack = await LiveKit.createLocalAudioTrack({
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-        channelCount: 1,
-      });
-      log("🎤 Mic track created");
-
-      const localAudio = document.createElement("audio");
-      localAudio.autoplay = true;
-      localAudio.muted = false;
-      localAudio.srcObject = new MediaStream([micTrack.mediaStreamTrack]);
-      document.body.appendChild(localAudio);
-
-      const source = audioContext.createMediaStreamSource(
-        new MediaStream([micTrack.mediaStreamTrack])
-      );
-      analyser = audioContext.createAnalyser();
-      analyser.fftSize = 512;
-      dataArray = new Uint8Array(analyser.fftSize);
-      source.connect(analyser);
-      startMeter();
-
-      room = new LiveKit.Room();
-      await room.connect(serverUrl, token);
-      log("🔗 Connected to LiveKit room");
-
-      await room.localParticipant.publishTrack(micTrack);
-      log("📤 Mic track published");
-
-      room.on(LiveKit.RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind === "audio") {
-          log("🔊 Agent audio subscribed");
-          const audioEl = track.attach();
-          audioEl.autoplay = true;
-          audioEl.muted = false;
-          document.body.appendChild(audioEl);
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoiceAI | Premium Assistant</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                        'glow': 'glow 4s ease-in-out infinite',
+                    }
+                }
+            }
         }
-      });
-    }
+    </script>
+    <style>
+        @keyframes float {
 
-    function startMeter() {
-      const levelEl = document.getElementById("level");
+            0%,
+            100% {
+                transform: translateY(0) scale(1);
+            }
 
-      function update() {
-        analyser.getByteTimeDomainData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          const v = (dataArray[i] - 128) / 128;
-          sum += v * v;
+            50% {
+                transform: translateY(-20px) scale(1.05);
+            }
         }
-        const rms = Math.sqrt(sum / dataArray.length);
-        levelEl.style.width = Math.min(100, rms * 200) + "%";
-        requestAnimationFrame(update);
-      }
-      update();
-    }
 
-    window.start = start;
-  </script>
+        @keyframes glow {
+
+            0%,
+            100% {
+                box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+            }
+
+            50% {
+                box-shadow: 0 0 40px rgba(59, 130, 246, 0.5);
+            }
+        }
+
+        body {
+            background: #05070a;
+            color: #f8fafc;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .premium-shadow {
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .chat-mask {
+            mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 99px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .wave-bar {
+            width: 3px;
+            background: #3b82f6;
+            border-radius: 3px;
+            transition: height 0.1s ease;
+        }
+
+        #visualizer-bg.thinking {
+            border-color: #8b5cf6;
+            box-shadow: 0 0 30px rgba(139, 92, 246, 0.3);
+        }
+
+        #visualizer-bg.speaking {
+            border-color: #10b981;
+            box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+    </style>
 </head>
 
-<body>
-  <h1>🛒 Ecommerce Voicebot – Debug Mode</h1>
-  <p>
-    Speak into your microphone.<br />
-    If the meter moves, audio is being captured correctly.
-  </p>
+<body class="flex items-center justify-center">
+    <!-- Ambient Background -->
+    <div class="fixed inset-0 z-0">
+        <div class="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-600/10 blur-[120px] rounded-full"></div>
+        <div class="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-violet-600/10 blur-[120px] rounded-full">
+        </div>
+    </div>
 
-  <div id="meter">
-    <div id="level"></div>
-  </div>
+    <!-- Main App Container -->
+    <div class="relative z-10 w-full max-w-5xl h-[85vh] flex gap-6 p-6">
 
-  <button onclick="start()">🎤 Start Talking</button>
+        <!-- Left Panel: Brand & Visualizer -->
+        <div class="w-[40%] flex flex-col items-center justify-between py-8">
+            <div class="text-center">
+                <div class="status-badge bg-blue-500/10 text-blue-400 border border-blue-500/20 mx-auto mb-4">
+                    <div class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></div>
+                    Professional AI Assistant
+                </div>
+                <h1 class="text-5xl font-semibold tracking-tight text-white mb-2">VoiceAI<span
+                        class="text-blue-500">.</span></h1>
+                <p class="text-slate-400 font-light text-sm tracking-wide">Premium Ecommerce Experience</p>
+            </div>
 
-  <pre id="log"></pre>
+            <!-- Central Orb -->
+            <div class="relative group">
+                <div id="visualizer-bg"
+                    class="w-64 h-64 rounded-full glass border-2 border-white/5 flex items-center justify-center transition-all duration-500 cursor-pointer">
+                    <div id="visualizer-inner"
+                        class="w-56 h-56 rounded-full bg-gradient-to-br from-blue-600/10 to-transparent border border-white/5 flex items-center justify-center">
+                        <div id="ai-status" class="flex flex-col items-center">
+                            <div id="mic-icon"
+                                class="text-white/40 mb-3 group-hover:text-blue-400 transition-colors duration-300">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="none"
+                                    viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+                                </svg>
+                            </div>
+                            <div id="orb-text" class="text-[10px] uppercase font-bold tracking-[0.2em] text-white/30">
+                                Ready</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Waves -->
+                <div id="waves" class="absolute bottom-[-30px] left-1/2 -translate-x-1/2 flex items-end gap-1 h-8">
+                    <!-- Dynamic waves -->
+                </div>
+            </div>
+
+            <!-- Main Action -->
+            <div id="action-area" class="w-full px-8">
+                <button id="start-btn"
+                    class="w-full glass py-4 rounded-2xl font-bold text-white hover:bg-white/10 hover:border-white/20 hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] border border-white/10 transition-all active:scale-[0.98] premium-shadow group">
+                    <span class="flex items-center justify-center gap-2">
+                        Connect to Assistant
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor" stroke-width="2"
+                            class="group-hover:translate-x-1 transition-transform">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                        </svg>
+                    </span>
+                </button>
+                <!-- Connection Steps Log -->
+                <div id="status-log" class="mt-4 flex flex-col items-center gap-1.5 min-h-[40px] opacity-60">
+                    <!-- Logs will appear here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Chat Interface -->
+        <div class="flex-1 glass rounded-[2.5rem] flex flex-col premium-shadow overflow-hidden border border-white/10">
+            <!-- Chat Header -->
+            <div class="px-8 py-6 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+                <div>
+                    <h3 class="font-semibold text-white">Live Conversation</h3>
+                    <p id="app-status" class="text-xs text-slate-500">Idle</p>
+                </div>
+                <div class="flex gap-2">
+                    <div class="w-2.5 h-2.5 rounded-full bg-red-400/20 flex items-center justify-center">
+                        <div class="w-1 h-1 rounded-full bg-red-400"></div>
+                    </div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-yellow-400/20 flex items-center justify-center">
+                        <div class="w-1 h-1 rounded-full bg-yellow-400"></div>
+                    </div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-green-400/20 flex items-center justify-center">
+                        <div class="w-1 h-1 rounded-full bg-green-400"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Messages Area -->
+            <div id="chat-container" class="flex-1 overflow-y-auto px-8 py-8 space-y-6">
+                <!-- Initial Welcome Placeholder -->
+                <div class="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-20"
+                    id="chat-placeholder">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor" stroke-width="1">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M20.25 8.511c.883.214 1.502 1.007 1.502 1.911v4.453c0 .904-.619 1.697-1.502 1.911l-7.314 1.776a3 3 0 0 1-1.396 0L4.225 16.786c-.884-.214-1.503-1.007-1.503-1.911V10.422c0-.904.619-1.697 1.503-1.911L11.539 6.735a3 3 0 0 1 1.396 0l7.315 1.776ZM11.54 11.233c.125.045.267.045.391 0l7.114-2.587-7.114-2.587a.499.499 0 0 0-.39 0l-7.115 2.587 7.115 2.587Zm0 0L3.75 8.356v6.23a.5.5 0 0 0 .373.486l7.417 1.8a2.25 2.25 0 0 0 1.042 0l7.418-1.8a.5.5 0 0 0 .373-.485V8.356l-7.788 2.877Z" />
+                    </svg>
+                    <p class="text-sm font-light">History will appear here after connection</p>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="p-8 border-t border-white/5 bg-white/[0.01]">
+                <div id="input-container" class="hidden relative">
+                    <input type="text" id="chat-input" placeholder="Type your query..."
+                        class="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 pr-16 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 transition-all font-light">
+                    <button id="send-btn"
+                        class="absolute right-3 top-2.5 p-2 bg-blue-600 hover:bg-blue-500 rounded-xl transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Logs for debugging -->
+    <pre id="log" class="hidden"></pre>
+
+    <script type="module">
+        import * as LiveKit from "https://unpkg.com/livekit-client/dist/livekit-client.esm.mjs";
+
+        const serverUrl = "wss://ecommerce-voicebot-vcef14em.livekit.cloud";
+        const backendUrl = "http://localhost:8000";
+
+        let room;
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let micTrack;
+
+        const startBtn = document.getElementById('start-btn');
+        const chatContainer = document.getElementById('chat-container');
+        const visualizerBg = document.getElementById('visualizer-bg');
+        const appStatus = document.getElementById('app-status');
+        const orbText = document.getElementById('orb-text');
+        const wavesContainer = document.getElementById('waves');
+        const chatInput = document.getElementById('chat-input');
+        const inputContainer = document.getElementById('input-container');
+        const placeholder = document.getElementById('chat-placeholder');
+        const statusLog = document.getElementById('status-log');
+
+        const logStep = (message, isError = false) => {
+            const step = document.createElement('p');
+            step.className = `text-[10px] ${isError ? 'text-red-400' : 'text-slate-500'} font-light animate-in fade-in slide-in-from-bottom-1 duration-300`;
+            step.textContent = `• ${message}`;
+            statusLog.appendChild(step);
+            if (statusLog.children.length > 3) statusLog.removeChild(statusLog.firstChild);
+        };
+
+        const playClickSound = () => {
+            if (!audioContext) return;
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(440, audioContext.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(880, audioContext.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.1, audioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+            osc.start();
+            osc.stop(audioContext.currentTime + 0.1);
+        };
+
+        // Waves setup
+        for (let i = 0; i < 15; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'wave-bar';
+            wavesContainer.appendChild(bar);
+        }
+        const waveBars = document.querySelectorAll('.wave-bar');
+
+        const updateState = (state) => {
+            visualizerBg.classList.remove('thinking', 'speaking', 'listening');
+            orbText.textContent = state;
+            appStatus.textContent = state.charAt(0).toUpperCase() + state.slice(1);
+
+            const iconContainer = document.getElementById('mic-icon');
+            let iconHtml = '';
+
+            if (state === 'thinking') {
+                visualizerBg.classList.add('thinking');
+                orbText.className = "text-[10px] uppercase font-bold tracking-[0.2em] text-violet-400";
+                iconHtml = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>';
+            } else if (state === 'speaking') {
+                visualizerBg.classList.add('speaking');
+                orbText.className = "text-[10px] uppercase font-bold tracking-[0.2em] text-emerald-400";
+                iconHtml = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1-1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" /></svg>';
+            } else {
+                visualizerBg.classList.add('listening');
+                orbText.className = "text-[10px] uppercase font-bold tracking-[0.2em] text-blue-400";
+                iconHtml = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" /></svg>';
+            }
+            iconContainer.innerHTML = iconHtml;
+        };
+
+        const addChatMessage = (role, text) => {
+            if (placeholder) placeholder.remove();
+
+            const wrapper = document.createElement('div');
+            wrapper.className = `flex w-full ${role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`;
+
+            const msg = document.createElement('div');
+            msg.className = `max-w-[85%] rounded-[1.5rem] px-5 py-3.5 text-sm ${role === 'user'
+                ? 'bg-blue-600 text-white rounded-tr-none'
+                : 'glass text-slate-100 rounded-tl-none border border-white/5'
+                }`;
+
+            const label = document.createElement('div');
+            label.className = `text-[9px] uppercase tracking-widest font-bold mb-1.5 opacity-40`;
+            label.textContent = role === 'user' ? 'You' : 'Assistant';
+
+            const content = document.createElement('p');
+            content.className = "leading-relaxed text-sm font-light";
+            content.textContent = text;
+
+            msg.appendChild(label);
+            msg.appendChild(content);
+            wrapper.appendChild(msg);
+            chatContainer.appendChild(wrapper);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        };
+
+        // Manual Stop / Barge-in
+        visualizerBg.addEventListener('click', () => {
+            playClickSound();
+            if (room && room.state === 'connected') {
+                const encoder = new TextEncoder();
+                room.localParticipant.publishData(
+                    encoder.encode(JSON.stringify({ type: 'stop' })),
+                    { reliable: true }
+                );
+                updateState('listening');
+            }
+        });
+
+        async function start() {
+            if (room) return;
+
+            try {
+                startBtn.disabled = true;
+                startBtn.innerHTML = `
+                    <span class="flex items-center justify-center gap-2">
+                        <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Connecting...
+                    </span>
+                `;
+
+                // Create AudioContext (must be created after user gesture or at least early)
+                audioContext = new AudioContext({ sampleRate: 48000 });
+                playClickSound();
+
+                // Start token fetch and mic access in parallel
+                logStep("Granting microphone access...");
+                const tokenPromise = fetch(`${backendUrl}/livekit/token`).then(r => {
+                    logStep("Fetching secure token...");
+                    return r.json();
+                });
+                const micPromise = LiveKit.createLocalAudioTrack().then(track => {
+                    logStep("Microphone ready.");
+                    return track;
+                });
+
+                const [tokenData, track] = await Promise.all([tokenPromise, micPromise]);
+                micTrack = track;
+
+                const source = audioContext.createMediaStreamSource(new MediaStream([micTrack.mediaStreamTrack]));
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                source.connect(analyser);
+                updateVisualizer();
+
+                logStep("Connecting to LiveKit...");
+                room = new LiveKit.Room();
+                await room.connect(serverUrl, tokenData.token);
+                logStep("Room connected.");
+
+                await room.localParticipant.publishTrack(micTrack);
+                logStep("Media stream published.");
+
+                startBtn.textContent = "Online";
+                startBtn.classList.add('bg-emerald-500/20', 'text-emerald-400', 'border-emerald-500/20');
+                appStatus.textContent = "Connected";
+                inputContainer.classList.remove('hidden');
+
+                // Final Ready Log
+                statusLog.innerHTML = `<p class="text-[10px] text-emerald-400 font-bold tracking-widest animate-pulse">• SESSION ACTIVE</p>`;
+                updateState('listening');
+                playClickSound(); // Soft beep to confirm ready
+
+                const encoder = new TextEncoder();
+                const decoder = new TextDecoder();
+
+                const sendMessage = () => {
+                    const text = chatInput.value.trim();
+                    if (!text) return;
+                    addChatMessage('user', text);
+                    room.localParticipant.publishData(
+                        encoder.encode(JSON.stringify({ type: 'chat', text })),
+                        { reliable: true }
+                    );
+                    chatInput.value = '';
+                };
+
+                document.getElementById('send-btn').onclick = sendMessage;
+                chatInput.onkeypress = (e) => e.key === 'Enter' && sendMessage();
+
+                room.on(LiveKit.RoomEvent.TrackSubscribed, (track) => {
+                    if (track.kind === "audio") {
+                        const el = track.attach();
+                        document.body.appendChild(el);
+                    }
+                });
+
+                room.on(LiveKit.RoomEvent.DataReceived, (payload) => {
+                    const data = JSON.parse(decoder.decode(payload));
+                    if (data.type === 'transcript') addChatMessage('user', data.text);
+                    if (data.type === 'reply') addChatMessage('assistant', data.text);
+                    if (data.type === 'state') updateState(data.state);
+                });
+
+            } catch (err) {
+                console.error(err);
+                startBtn.textContent = "Error Connecting";
+                startBtn.disabled = false;
+                logStep("Connection failed: " + err.message, true);
+            }
+        }
+
+        function updateVisualizer() {
+            if (!analyser) return;
+            analyser.getByteFrequencyData(dataArray);
+
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+                if (waveBars[i % waveBars.length]) {
+                    const h = (dataArray[i] / 255) * 40;
+                    waveBars[i % waveBars.length].style.height = `${Math.max(2, h)}px`;
+                }
+            }
+
+            const avg = sum / dataArray.length;
+            const s = 1 + (avg / 255) * 0.4;
+            visualizerBg.style.transform = `scale(${s})`;
+
+            // Dynamic glow intensity based on volume
+            const glowOpacity = 0.1 + (avg / 255) * 0.4;
+            visualizerBg.style.boxShadow = `0 0 40px rgba(59, 130, 246, ${glowOpacity})`;
+
+            requestAnimationFrame(updateVisualizer);
+        }
+
+        startBtn.onclick = start;
+    </script>
 </body>
+
 </html>
