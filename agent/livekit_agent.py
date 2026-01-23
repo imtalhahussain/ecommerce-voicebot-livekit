@@ -1,5 +1,6 @@
 import asyncio
 import numpy as np
+import json
 
 from livekit.agents import JobContext, WorkerOptions, cli, AutoSubscribe
 from livekit.rtc import (
@@ -21,9 +22,9 @@ TARGET_SR = 16000
 CHANNELS = 1
 
 # ---- Speech detection tuning ----
-SPEECH_RMS = 900
-SILENCE_FRAMES = 8
-MIN_UTTERANCE_BYTES = TARGET_SR * 2  # ~1 second
+SPEECH_RMS = 750 # More sensitive
+SILENCE_FRAMES = 3  # Faster (~0.3s)
+MIN_UTTERANCE_BYTES = int(TARGET_SR * 0.4) # 0.4s min speech
 
 
 def resample_48k_to_16k(pcm_48k: bytes) -> bytes:
@@ -71,8 +72,8 @@ async def entrypoint(ctx: JobContext):
             frame: AudioFrame = event.frame
             buffer_48k.extend(frame.data)
 
-            # wait for ~1 sec of 48k audio
-            if len(buffer_48k) < 48000 * 2:
+            # wait for ~0.1 sec of 48k audio for faster reaction
+            if len(buffer_48k) < 4800 * 2:
                 continue
 
             pcm_48k = bytes(buffer_48k)
@@ -82,17 +83,18 @@ async def entrypoint(ctx: JobContext):
             samples = np.frombuffer(pcm_16k, dtype=np.int16)
 
             rms = int(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
-            print("🎚 RMS:", rms)
 
             # ---- BARGE-IN DETECTION ----
             if agent_speaking.is_set() and rms >= SPEECH_RMS:
                 print("⛔ Barge-in detected — stopping agent speech")
                 stop_tts.set()
+                # Clear buffer so we don't process old audio as new speech
+                utterance_16k.clear() 
                 agent_speaking.clear()
 
             if rms >= SPEECH_RMS:
                 if not in_speech:
-                    print("🟢 Speech started")
+                    print("🟢 Speech detected")
                 in_speech = True
                 silence_count = 0
                 utterance_16k.extend(pcm_16k)
@@ -107,22 +109,45 @@ async def entrypoint(ctx: JobContext):
 
                     if len(utterance_16k) >= MIN_UTTERANCE_BYTES:
                         print("🧠 Sending utterance to STT...")
+                        
+                        # Signal thinking state
+                        asyncio.create_task(ctx.room.local_participant.publish_data(
+                            json.dumps({"type": "state", "state": "thinking"}).encode('utf-8')
+                        ))
 
                         text = await stt.transcribe(bytes(utterance_16k))
                         utterance_16k.clear()
                         silence_count = 0
 
-                        print("🧠 STT:", repr(text))
                         if not text:
+                            # Signal listening state
+                            asyncio.create_task(ctx.room.local_participant.publish_data(
+                                json.dumps({"type": "state", "state": "listening"}).encode('utf-8')
+                            ))
                             continue
 
                         # ---- Conversation memory ----
                         memory.add_user(text)
 
+                        # Publish user transcript to frontend
+                        asyncio.create_task(ctx.room.local_participant.publish_data(
+                            json.dumps({"type": "transcript", "text": text}).encode('utf-8')
+                        ))
+
                         reply = await llm.reply(text, memory)
                         memory.add_assistant(reply)
 
                         print("🤖 Reply:", reply)
+
+                        # Publish assistant reply to frontend
+                        asyncio.create_task(ctx.room.local_participant.publish_data(
+                            json.dumps({"type": "reply", "text": reply}).encode('utf-8')
+                        ))
+                        
+                        # Signal speaking state
+                        asyncio.create_task(ctx.room.local_participant.publish_data(
+                            json.dumps({"type": "state", "state": "speaking"}).encode('utf-8')
+                        ))
 
                         # ---- Speak with interrupt support ----
                         agent_speaking.set()
@@ -154,6 +179,11 @@ async def entrypoint(ctx: JobContext):
 
                         agent_speaking.clear()
                         print("✅ Reply audio streamed")
+                        
+                        # Signal listening state
+                        asyncio.create_task(ctx.room.local_participant.publish_data(
+                            json.dumps({"type": "state", "state": "listening"}).encode('utf-8')
+                        ))
 
                     else:
                         utterance_16k.clear()
@@ -162,6 +192,49 @@ async def entrypoint(ctx: JobContext):
         if track.kind == TrackKind.KIND_AUDIO:
             print("🔊 Subscribed to user audio track")
             asyncio.create_task(handle_audio(track))
+
+    async def process_text(text: str):
+        print(f"💬 Text received: {text}")
+        memory.add_user(text)
+        
+        reply = await llm.reply(text, memory)
+        memory.add_assistant(reply)
+        
+        print(f"🤖 Reply: {reply}")
+        asyncio.create_task(ctx.room.local_participant.publish_data(
+            json.dumps({"type": "reply", "text": reply}).encode('utf-8')
+        ))
+        
+        # Speak the reply
+        agent_speaking.set()
+        stop_tts.clear()
+        audio_bytes = await tts.synthesize(reply)
+        out_samples = np.frombuffer(audio_bytes, dtype=np.int16)
+        frame_size = 320
+        for i in range(0, len(out_samples), frame_size):
+            if stop_tts.is_set(): break
+            chunk = out_samples[i:i + frame_size]
+            if len(chunk) < frame_size: break
+            out_frame = AudioFrame(data=chunk.tobytes(), sample_rate=TARGET_SR, num_channels=1, samples_per_channel=len(chunk))
+            await audio_source.capture_frame(out_frame)
+            await asyncio.sleep(0.02)
+        agent_speaking.clear()
+
+    @ctx.room.on("data_received")
+    def on_data(data: bytes, participant, kind):
+        try:
+            payload = json.loads(data.decode('utf-8'))
+            if payload.get("type") == "chat":
+                asyncio.create_task(process_text(payload.get("text")))
+            elif payload.get("type") == "stop":
+                print("🛑 Manual stop received")
+                stop_tts.set()
+                agent_speaking.clear()
+                asyncio.create_task(ctx.room.local_participant.publish_data(
+                    json.dumps({"type": "state", "state": "listening"}).encode('utf-8')
+                ))
+        except:
+            pass
 
     @ctx.room.on("track_subscribed")
     def on_track(track, publication, participant):
